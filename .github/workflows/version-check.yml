@@ -105,6 +105,33 @@ jobs:
               false
             fi
             echo "PyPI serves the baseline $baseline, as the marker claims."
+
+            # Honest about its tier is not the same as on the best tier. A newer
+            # release, or an sdist next to a wheel-only release, can appear after the
+            # baseline was generated: every assertion above stays green while the
+            # baseline quietly describes a superseded artifact, and the gate goes on
+            # measuring the wrong thing. So ask the generator what it would pick now.
+            #
+            # Only the tier and the version are compared. The regenerated SURFACE must
+            # never reach a decision, and released-surface.json is never rewritten here:
+            # recomputing both sides at check time is the one shape that is structurally
+            # unable to refuse, and this must not be "simplified" into it. The tier is
+            # compared by prefix alone, because a marker's tail names a filename or a sha
+            # that moves on its own.
+            best="$(python3 scripts/baseline.py --stdout)"
+            best_marker="$(printf '%s' "$best" | jq -r '.source | split(" ") | first')"
+            best_version="$(printf '%s' "$best" | jq -r .version)"
+            if [ "${best_marker%%:*}" != "${marker%%:*}" ]; then
+              echo "::error::the baseline sits on tier '${marker%%:*}' but" \
+                "'${best_marker%%:*}' is reachable now; run scripts/baseline.py."
+              false
+            fi
+            if [ "$best_version" != "$baseline" ]; then
+              echo "::error::the baseline describes $baseline, but $best_version is the" \
+                "latest published version; run scripts/baseline.py."
+              false
+            fi
+            echo "Tier '${marker%%:*}' at $baseline is still the best artifact available."
           else
             if curl -sSf "https://pypi.org/pypi/$PROJECT/json" > /dev/null; then
               echo "::error::released-surface.json claims nothing was published ($marker)," \

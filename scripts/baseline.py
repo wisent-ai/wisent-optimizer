@@ -21,8 +21,11 @@ The first whitespace-delimited token of the `source` field is the marker that
 The marker constants below are that shared vocabulary.
 
 Usage:
-    python3 scripts/baseline.py            # write released-surface.json
-    python3 scripts/baseline.py --print    # show it without writing
+    python3 scripts/baseline.py             # write released-surface.json
+    python3 scripts/baseline.py --stdout    # show it without writing
+
+`--stdout` is what the workflow uses to ask "what would you choose now?" without ever
+letting the regenerated file, or the surface inside it, reach a decision.
 """
 
 from __future__ import annotations
@@ -151,7 +154,7 @@ def document() -> dict:
 def main(argv: list) -> int:
     baseline = document()
     rendered = json.dumps(baseline, indent=int(True) + int(True)) + "\n"
-    if "--print" in argv:
+    if "--stdout" in argv:
         sys.stdout.write(rendered)
         return int(False)
     destination = pathlib.Path(__file__).resolve().parent.parent / BASELINE_FILE
