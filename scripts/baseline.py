@@ -67,6 +67,16 @@ def published() -> tuple:
             "package has no released baseline to recover and the version gate does "
             "not apply to it; do not invent one."
         ) from error
+    except urllib.error.URLError as error:
+        # An answer was never received, which is not the same as an answer of "no such
+        # project". Say which one happened, so a caller reading this in a log is not
+        # left deducing a transport failure from a traceback -- and so nothing
+        # downstream can mistake silence for absence.
+        raise SystemExit(
+            f"{PYPI_PROJECT_URL}: unreachable ({error.reason}). PyPI did not answer, so "
+            "the published baseline cannot be recovered or checked. This is a transport "
+            f"failure, not evidence about whether {PROJECT} is published."
+        ) from error
     version = metadata["info"]["version"]
     artifacts = [
         artifact

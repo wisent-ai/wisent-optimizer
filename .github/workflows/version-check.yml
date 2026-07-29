@@ -141,27 +141,37 @@ jobs:
             fi
             echo "$marker is still the best artifact available."
           else
-            # This branch reads absence, and absence is inferred from a request that
-            # FAILS -- which is also what no egress, a DNS failure or an outage look
-            # like. Without a positive control the step would conclude "nothing is
-            # published, the baseline is honest" precisely when it learned nothing, and
-            # the uninformative answer would be the passing one. So prove the registry
-            # is reachable first, against a project that certainly exists, and only then
-            # read this project's absence as a fact.
+            # This branch reads absence, so it must read a real ANSWER rather than the
+            # failure of a request. Under `curl -sSf` a rate limit, an error page and a
+            # permission refusal all fail exactly like not-found, and a reachability
+            # control against another project does not help: it proves the registry is
+            # up, not that this project's endpoint answered. A refused-permission reply
+            # is a successful request whose answer means nothing at all.
             #
-            # The forward branch above needs no control: there, an unreachable registry
-            # makes curl fail and the step refuse, which is the safe direction already.
-            if ! curl -sSf "https://pypi.org/pypi/pip/json" > /dev/null; then
-              echo "::error::cannot reach PyPI, so the absence of $PROJECT is unproven." \
-                "Refusing rather than assuming it is unpublished."
-              false
-            fi
-            if curl -sSf "https://pypi.org/pypi/$PROJECT/json" > /dev/null; then
+            # So demand testimony. PyPI states absence explicitly, as
+            # {"message": "Not Found"}, and states presence by naming the project.
+            # Three outcomes, not two: named -> published; stated absent -> honest; any
+            # other body, including none -> unproven, refuse. `|| true` is safe only
+            # because both passing branches require specific content and the fallthrough
+            # refuses; it must never be lifted into a check that treats an empty answer
+            # as agreement.
+            #
+            # The forward branch above needs none of this: there, any answer that is not
+            # the artifact makes curl fail and the step refuse, which is already the safe
+            # direction.
+            answer="$(curl -s "https://pypi.org/pypi/$PROJECT/json" || true)"
+            if printf '%s' "$answer" | jq -e '.info.name' > /dev/null; then
               echo "::error::released-surface.json claims nothing was published ($marker)," \
-                "but PyPI serves $PROJECT. The baseline is dodging a real release;" \
+                "but PyPI names $PROJECT. The baseline is dodging a real release;" \
                 "run scripts/baseline.py."
               false
+            elif ! printf '%s' "$answer" |
+                 jq -e '(.message // "") | ascii_downcase | contains("not found")' \
+                 > /dev/null; then
+              echo "::error::PyPI did not answer about $PROJECT, so its absence is" \
+                "unproven. Refusing rather than assuming it is unpublished."
+              false
             fi
-            echo "PyPI is reachable and serves no $PROJECT, so an unpublished baseline" \
-              "is the honest one."
+            echo "PyPI states $PROJECT is not found, so an unpublished baseline is the" \
+              "honest one."
           fi
