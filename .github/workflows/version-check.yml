@@ -106,32 +106,40 @@ jobs:
             fi
             echo "PyPI serves the baseline $baseline, as the marker claims."
 
-            # Honest about its tier is not the same as on the best tier. A newer
-            # release, or an sdist next to a wheel-only release, can appear after the
-            # baseline was generated: every assertion above stays green while the
-            # baseline quietly describes a superseded artifact, and the gate goes on
-            # measuring the wrong thing. So ask the generator what it would pick now.
+            # Honest about its tier is not the same as being on the best artifact. A
+            # newer release, an sdist next to a wheel-only release, or a second pure
+            # wheel for the same version can all appear after the baseline was
+            # generated: every assertion above stays green while released-surface.json
+            # quietly describes a superseded artifact, and the gate goes on measuring
+            # the wrong bytes. So ask the generator what it would pick now.
             #
-            # Only the tier and the version are compared. The regenerated SURFACE must
-            # never reach a decision, and released-surface.json is never rewritten here:
-            # recomputing both sides at check time is the one shape that is structurally
-            # unable to refuse, and this must not be "simplified" into it. The tier is
-            # compared by prefix alone, because a marker's tail names a filename or a sha
-            # that moves on its own.
+            # Only the version and the marker are compared. The regenerated SURFACE
+            # must never reach a decision, and released-surface.json is never rewritten
+            # here: recomputing both sides at check time is the one shape that is
+            # structurally unable to refuse anything, and this must not be "simplified"
+            # into it.
+            #
+            # The whole marker is compared, not just its tier prefix, because on a
+            # registry tier the marker names one exact file and any other file is a
+            # superseded baseline even when tier and version agree. Prefix-only
+            # comparison is required on the head tier alone, whose sha moves with every
+            # commit; this repository can never be on that tier, because PyPI serves it.
+            # The probe costs one small download per run, which also proves the
+            # published artifact still parses.
             best="$(python3 scripts/baseline.py --stdout)"
             best_marker="$(printf '%s' "$best" | jq -r '.source | split(" ") | first')"
             best_version="$(printf '%s' "$best" | jq -r .version)"
-            if [ "${best_marker%%:*}" != "${marker%%:*}" ]; then
-              echo "::error::the baseline sits on tier '${marker%%:*}' but" \
-                "'${best_marker%%:*}' is reachable now; run scripts/baseline.py."
-              false
-            fi
             if [ "$best_version" != "$baseline" ]; then
               echo "::error::the baseline describes $baseline, but $best_version is the" \
                 "latest published version; run scripts/baseline.py."
               false
             fi
-            echo "Tier '${marker%%:*}' at $baseline is still the best artifact available."
+            if [ "$best_marker" != "$marker" ]; then
+              echo "::error::the baseline names $marker, but the artifact to recover from" \
+                "now is $best_marker; run scripts/baseline.py."
+              false
+            fi
+            echo "$marker is still the best artifact available."
           else
             if curl -sSf "https://pypi.org/pypi/$PROJECT/json" > /dev/null; then
               echo "::error::released-surface.json claims nothing was published ($marker)," \
