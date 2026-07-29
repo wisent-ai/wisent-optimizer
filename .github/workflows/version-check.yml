@@ -141,11 +141,27 @@ jobs:
             fi
             echo "$marker is still the best artifact available."
           else
+            # This branch reads absence, and absence is inferred from a request that
+            # FAILS -- which is also what no egress, a DNS failure or an outage look
+            # like. Without a positive control the step would conclude "nothing is
+            # published, the baseline is honest" precisely when it learned nothing, and
+            # the uninformative answer would be the passing one. So prove the registry
+            # is reachable first, against a project that certainly exists, and only then
+            # read this project's absence as a fact.
+            #
+            # The forward branch above needs no control: there, an unreachable registry
+            # makes curl fail and the step refuse, which is the safe direction already.
+            if ! curl -sSf "https://pypi.org/pypi/pip/json" > /dev/null; then
+              echo "::error::cannot reach PyPI, so the absence of $PROJECT is unproven." \
+                "Refusing rather than assuming it is unpublished."
+              false
+            fi
             if curl -sSf "https://pypi.org/pypi/$PROJECT/json" > /dev/null; then
               echo "::error::released-surface.json claims nothing was published ($marker)," \
                 "but PyPI serves $PROJECT. The baseline is dodging a real release;" \
                 "run scripts/baseline.py."
               false
             fi
-            echo "Nothing published, so an unpublished baseline is the honest one."
+            echo "PyPI is reachable and serves no $PROJECT, so an unpublished baseline" \
+              "is the honest one."
           fi
