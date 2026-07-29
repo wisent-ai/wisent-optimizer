@@ -1,0 +1,27 @@
+{
+  "version": "0.1.1",
+  "source": "pypi-wheel:wisent_optimizer-0.1.1-py3-none-any.whl recovered by scripts/baseline.py from the artifact PyPI serves for wisent-optimizer 0.1.1 (sha256 46c9eb30b62f0e2ade00b5175b2bce5785b6aec34b802c11a5f85ea5a5aed58e), read with scripts/surface.py without importing it",
+  "surface": [
+    "export:wisent.core.control.steering_optimizer.auto:run_auto_steering_optimization",
+    "export:wisent.core.control.steering_optimizer.auto:run_grid_search",
+    "export:wisent.core.control.steering_optimizer.auto:train_recommended_method",
+    "export:wisent.core.control.steering_optimizer.optimizer:SteeringOptimizer",
+    "export:wisent.core.control.steering_optimizer:SteeringApplicationConfig",
+    "export:wisent.core.control.steering_optimizer:SteeringApplicationStrategy",
+    "export:wisent.core.control.steering_optimizer:SteeringMethodConfig",
+    "export:wisent.core.control.steering_optimizer:SteeringOptimizationResult",
+    "export:wisent.core.control.steering_optimizer:SteeringOptimizationSummary",
+    "export:wisent.core.control.steering_optimizer:SteeringOptimizer",
+    "export:wisent.core.control.steering_optimizer:get_default_prompt_construction_strategies",
+    "export:wisent.core.control.steering_optimizer:get_default_steering_application_configs",
+    "export:wisent.core.control.steering_optimizer:get_default_steering_configs",
+    "export:wisent.core.control.steering_optimizer:get_default_token_aggregation_strategies",
+    "export:wisent.core.control.steering_optimizer:get_optimal_steering_params",
+    "export:wisent.core.control.steering_optimizer:run_auto_steering_optimization",
+    "export:wisent.core.control.steering_optimizer:run_steering_optimization",
+    "optimization_type:comprehensive",
+    "optimization_type:layer",
+    "optimization_type:method_comparison",
+    "optimization_type:strength"
+  ]
+}

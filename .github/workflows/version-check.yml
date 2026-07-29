@@ -1,0 +1,116 @@
+name: Version check
+
+# Refuse a change whose declared version disagrees with what it did to the public
+# contract. The contract of this package is what it promises callers: the names its
+# package initialisers re-export, and the `optimization_type` strings its dispatch
+# accepts. Adding one is a capability; removing or renaming one breaks whoever called
+# it yesterday, and in the dispatch case breaks them silently.
+#
+# The rule itself lives in one place for the whole fleet and is not copied here:
+# https://github.com/lbartoszcze/AutoVersion. This workflow supplies only the three
+# things this repository alone knows: its surface, the version it declares, and the
+# published artifact its baseline was recovered from.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PROJECT: wisent-optimizer
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the shared rule
+        run: pip install --quiet "git+https://github.com/lbartoszcze/AutoVersion@v0.1.0"
+
+      - name: Read the public surface
+        # No package dependencies: the surface is read with ast, so this stays cheap and
+        # cannot be broken by optuna, hyperopt or an uninstalled sibling `wisent`
+        # distribution. A module that does not parse fails the step rather than
+        # silently shrinking the surface.
+        run: python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json"
+
+      - name: Compare against the released contract
+        run: |
+          set -euo pipefail
+          released="$(jq -r .version released-surface.json)"
+          declared="$(awk -F'"' '/version=/{print $2; exit}' setup.py)"
+          echo "released: $released"
+          echo "declared: $declared"
+
+          verdict="$(autoversion decide \
+            --current "$released" \
+            --published-surface released-surface.json \
+            --candidate-surface "$RUNNER_TEMP/candidate.json" \
+            --json)"
+          echo "$verdict"
+
+          change="$(printf '%s' "$verdict" | jq -r .change)"
+          required="$(printf '%s' "$verdict" | jq -r .next)"
+
+          if [ "$declared" = "$released" ]; then
+            if [ "$change" != "internal" ]; then
+              echo "::error::The public contract changed ($change) but setup.py still" \
+                "declares the published version $released. The next version must be $required."
+              false
+            fi
+            echo "The published version is still declared and the contract is unchanged."
+          elif [ "$declared" != "$required" ]; then
+            echo "::error::setup.py declares $declared, but a $change change to" \
+              "$released requires $required."
+            false
+          else
+            echo "Declared version matches the $change change."
+          fi
+
+      - name: Verify the baseline is the artifact it claims to be
+        # Checked on pull requests too, not only on main: a hand-edited baseline is
+        # exactly the thing review should catch, and every comparison above is measured
+        # against it.
+        run: |
+          set -euo pipefail
+          # The first whitespace-delimited token of "source" is the provenance marker;
+          # the rest is prose. A `pypi-` marker claims the registry serves that exact
+          # version; any other marker claims the registry serves nothing at all. Both
+          # directions are checked, because a baseline that stops describing a published
+          # artifact -- in either direction -- makes the whole gate decorative.
+          baseline="$(jq -r .version released-surface.json)"
+          marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
+          echo "marker: $marker"
+
+          case "$marker" in
+            pypi-sdist:*|pypi-wheel:*) claims_registry=yes ;;
+            stado:*|git-archive:*|head:*) claims_registry=no ;;
+            *) echo "::error::unknown baseline provenance marker: $marker"; false ;;
+          esac
+
+          if [ "$claims_registry" = yes ]; then
+            case "$marker" in
+              *"$baseline"*) ;;
+              *) echo "::error::the marker $marker does not name the baseline version" \
+                   "$baseline, so the two disagree about what was recovered."; false ;;
+            esac
+            if ! curl -sSf "https://pypi.org/pypi/$PROJECT/$baseline/json" > /dev/null; then
+              echo "::error::released-surface.json claims $marker, but PyPI does not serve" \
+                "$PROJECT $baseline. The baseline was hand-edited; run scripts/baseline.py."
+              false
+            fi
+            echo "PyPI serves the baseline $baseline, as the marker claims."
+          else
+            if curl -sSf "https://pypi.org/pypi/$PROJECT/json" > /dev/null; then
+              echo "::error::released-surface.json claims nothing was published ($marker)," \
+                "but PyPI serves $PROJECT. The baseline is dodging a real release;" \
+                "run scripts/baseline.py."
+              false
+            fi
+            echo "Nothing published, so an unpublished baseline is the honest one."
+          fi
