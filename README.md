@@ -1,7 +1,6 @@
 # wisent-optimizer
 
 <!-- wisent-readme-signals:start -->
-[![Version check](https://github.com/wisent-ai/wisent-optimizer/actions/workflows/version-check.yml/badge.svg?branch=main)](https://github.com/wisent-ai/wisent-optimizer/actions/workflows/version-check.yml)
 [![Release](https://img.shields.io/github/v/release/wisent-ai/wisent-optimizer?display_name=tag&sort=semver)](https://github.com/wisent-ai/wisent-optimizer/releases)
 [![Downloads](https://img.shields.io/github/downloads/wisent-ai/wisent-optimizer/total)](https://github.com/wisent-ai/wisent-optimizer/releases)
 [![License](https://img.shields.io/github/license/wisent-ai/wisent-optimizer)](https://github.com/wisent-ai/wisent-optimizer)
