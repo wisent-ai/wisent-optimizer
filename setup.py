@@ -7,6 +7,11 @@ setup(
     description="Optuna+hyperopt-based steering hyperparameter optimizer for wisent",
     url="https://github.com/wisent-ai/wisent-optimizer",
     packages=find_namespace_packages(include=["wisent", "wisent.*"]),
+    entry_points={
+        "console_scripts": [
+            "wisent-optimizer=wisent.core.control.steering_optimizer.onboarding:main",
+        ],
+    },
     python_requires=">=3.9",
     install_requires=["wisent>=0.10.0", "optuna>=3.0.0", "hyperopt"],
 )

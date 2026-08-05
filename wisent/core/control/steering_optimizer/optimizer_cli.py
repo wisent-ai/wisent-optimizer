@@ -55,7 +55,7 @@ def run_steering_optimization(
     if max_time_minutes is None:
         raise ValueError("max_time_minutes is required")
     if optimization_type is None:
-        return run_auto_steering_optimization(
+        result = run_auto_steering_optimization(
             model_name=model_name,
             task_name=task_name,
             limit=limit,
@@ -71,6 +71,7 @@ def run_steering_optimization(
             architecture_module_limit=architecture_module_limit, progress_log_interval=progress_log_interval,
             train_ratio=train_ratio,
         )
+        return _observe_ranked_result(result, model_name, task_name)
 
     optimizer = SteeringOptimizer(model_name=model_name, device=device, verbose=verbose)
 
@@ -83,7 +84,7 @@ def run_steering_optimization(
             limit=limit,
             max_time_minutes=max_time_minutes,
         )
-        return _summary_to_dict(summary)
+        return _observe_ranked_result(_summary_to_dict(summary), model_name, task_name)
 
     elif optimization_type == "layer":
         from wisent.core.control.steering_methods import SteeringMethodType
@@ -141,10 +142,18 @@ def run_steering_optimization(
             limit=limit,
             max_time_minutes=max_time_minutes,
         )
-        return _summary_to_dict(summary)
+        return _observe_ranked_result(_summary_to_dict(summary), model_name, task_name)
 
     else:
         return {"error": f"Unknown optimization type: {optimization_type}"}
+
+
+def _observe_ranked_result(result: Dict[str, Any], model_name: str, task_name: str) -> Dict[str, Any]:
+    """Attach onboarding success to a real ranking without affecting optimization."""
+    from .onboarding import record_ranked_configuration
+
+    record_ranked_configuration(result, model_name=model_name, task_name=task_name)
+    return result
 
 
 def get_optimal_steering_params(
