@@ -186,6 +186,22 @@ jobs:
           marker="$(jq -r '.source | split(" ") | first' released-surface.json)"
           echo "marker: $marker"
 
+          # This job asks no question about a git ref anywhere, on purpose.
+          # scripts/baseline.py implements two tiers only — pypi-sdist and pypi-wheel —
+          # and says so in its own docstring; the non-registry arm below can be entered
+          # only by a hand-edited baseline. With no tag question in the file there is
+          # nothing to scope to `origin`, and a `git ls-remote` added here would be an
+          # assertion no verdict reads. Measured while writing this: origin lists no
+          # tags and this repository serves no GitHub Release, so the tier ordering is
+          # not quietly skipping a tag-shaped artifact.
+          #
+          # What revokes this: released-surface.json carrying a marker that is not
+          # pypi-*, scripts/baseline.py gaining a git-archive or head tier, or origin
+          # serving a tag or a Release. Then the "nothing was published" branch must
+          # prove absence AT ORIGIN with `git ls-remote --tags origin` — checkout
+          # fetches no tags, so a local listing is blind on a runner, and a fork's
+          # local listing shows the upstream's tags as though they were ours — and the
+          # job must fetch tags after checkout. See oko/.github/workflows/version-check.yml.
           case "$marker" in
             pypi-sdist:*|pypi-wheel:*) claims_registry=yes ;;
             stado:*|git-archive:*|head:*) claims_registry=no ;;
