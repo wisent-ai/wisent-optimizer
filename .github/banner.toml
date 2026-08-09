@@ -1,0 +1,15 @@
+[automation]
+managed = true
+source_fingerprint = "bf1b33ca6cf80bc2"
+category = "safety"
+
+[banner]
+title = "Tune steering methods automatically."
+description = "Optuna and Hyperopt optimization for Wisent representation-steering parameters."
+product = "Wisent"
+url = "wisent.ai"
+theme = "dark"
+layout = "latent-field-left"
+art_seed = "wisent-optimizer"
+width = 1584
+height = 396
