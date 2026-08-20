@@ -1,11 +1,13 @@
 [automation]
 managed = true
-source_fingerprint = "28178f3b7dbbd585"
+source_fingerprint = "4159cf89fd768374"
 category = "agent"
+copy_status = "missing"
+approved_in = ""
 
 [banner]
-title = "Tune steering methods automatically."
-description = "Optuna and Hyperopt optimization for Wisent representation-steering parameters."
+title = "Wisent Optimizer"
+description = ""
 product = "Wisent"
 url = "wisent.com"
 theme = "dark"
