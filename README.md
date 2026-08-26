@@ -23,6 +23,8 @@ fine-tuning. Better than analysing the outputs directly.
 Deploy the latest research in your stack. This is the hyperparameter optimizer for
 its steering methods.
 
+Documentation: [Wisent model optimizer](https://wisent.com/docs/models/wisent-optimizer)
+
 ## Install
 
 ```
