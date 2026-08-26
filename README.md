@@ -3,6 +3,8 @@
 Hyperparameter optimization for wisent steering methods, using Optuna and hyperopt.
 Split out of wisent-open-source. Provides `wisent.core.control.steering_optimizer`.
 
+Documentation: [Wisent model optimizer](https://wisent.com/docs/models/wisent-optimizer)
+
 ## Install
 
 ```
