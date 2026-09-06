@@ -72,12 +72,200 @@ jobs:
             *) echo "::error::autoversion resolves to '${resolved:-nothing}', outside the venv"; false ;;
           esac
 
-      - name: Read the public surface
-        # No package dependencies: the surface is read with ast, so this stays cheap and
-        # cannot be broken by optuna, hyperopt or an uninstalled sibling `wisent`
+      - name: Read the current and published public surfaces
+        # No package dependencies: both surfaces are read with ast, so this stays
+        # cheap and cannot be broken by optuna, hyperopt or an uninstalled sibling
         # distribution. A module that does not parse fails the step rather than
         # silently shrinking the surface.
-        run: python3 scripts/surface.py > "$RUNNER_TEMP/candidate.json"
+        run: |
+          python3 - <<'PY'
+          import ast
+          import io
+          import json
+          import os
+          import tarfile
+          import tempfile
+          import urllib.request
+          import zipfile
+          from pathlib import Path
+
+          PACKAGE = ("wisent", "core", "control", "steering_optimizer")
+          DISPATCH_PARAMETER = "optimization_type"
+
+          def parse(source):
+              try:
+                  return ast.parse(source.read_text(), filename=str(source))
+              except (OSError, SyntaxError) as error:
+                  raise SystemExit(
+                      f"{source}: surface is unknown because it cannot be parsed: {error}"
+                  ) from error
+
+          def string_elements(node, source):
+              if not isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+                  raise SystemExit(
+                      f"{source}: __all__ is not a literal sequence"
+                  )
+              names = []
+              for element in node.elts:
+                  if not (
+                      isinstance(element, ast.Constant)
+                      and isinstance(element.value, str)
+                  ):
+                      raise SystemExit(
+                          f"{source}: __all__ has a non-literal entry"
+                      )
+                  names.append(element.value)
+              return names
+
+          def exported_names(tree, source):
+              found = None
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Assign):
+                      targets = [
+                          target
+                          for target in node.targets
+                          if isinstance(target, ast.Name)
+                      ]
+                      value = node.value
+                  elif isinstance(
+                      node, (ast.AnnAssign, ast.AugAssign)
+                  ) and isinstance(node.target, ast.Name):
+                      targets, value = [node.target], node.value
+                  else:
+                      continue
+                  if any(target.id == "__all__" for target in targets):
+                      found = (found or []) + string_elements(value, source)
+              if found is None:
+                  raise SystemExit(
+                      f"{source}: package initializer has no __all__"
+                  )
+              return found
+
+          def dispatch_names(tree):
+              found = []
+              for node in ast.walk(tree):
+                  if not isinstance(node, ast.Compare):
+                      continue
+                  if not (
+                      isinstance(node.left, ast.Name)
+                      and node.left.id == DISPATCH_PARAMETER
+                  ):
+                      continue
+                  for operator, comparator in zip(
+                      node.ops, node.comparators
+                  ):
+                      if not isinstance(operator, (ast.Eq, ast.In)):
+                          continue
+                      candidates = (
+                          comparator.elts
+                          if isinstance(
+                              comparator, (ast.List, ast.Tuple, ast.Set)
+                          )
+                          else [comparator]
+                      )
+                      for candidate in candidates:
+                          if isinstance(
+                              candidate, ast.Constant
+                          ) and isinstance(candidate.value, str):
+                              found.append(candidate.value)
+              return found
+
+          def public_surface(root):
+              package = root.joinpath(*PACKAGE)
+              if not package.is_dir():
+                  raise SystemExit(f"{package} is not a directory")
+              names = set()
+              for source in sorted(package.rglob("*.py")):
+                  tree = parse(source)
+                  if source.name == "__init__.py":
+                      parts = list(
+                          source.relative_to(root).with_suffix("").parts
+                      )
+                      parts.pop()
+                      module = ".".join(parts)
+                      for name in exported_names(tree, source):
+                          names.add(f"export:{module}:{name}")
+                  for name in dispatch_names(tree):
+                      names.add(f"{DISPATCH_PARAMETER}:{name}")
+              if not names:
+                  raise SystemExit(
+                      f"no promised names found under {package}"
+                  )
+              return sorted(names)
+
+          runner_temp = Path(os.environ["RUNNER_TEMP"])
+          (runner_temp / "candidate.json").write_text(
+              json.dumps({"surface": public_surface(Path("."))}, indent=2)
+              + "\n"
+          )
+
+          project = "wisent-optimizer"
+          with urllib.request.urlopen(
+              f"https://pypi.org/pypi/{project}/json"
+          ) as response:
+              metadata = json.load(response)
+          version = metadata["info"]["version"]
+          artifacts = [
+              artifact
+              for artifact in metadata["releases"].get(version, [])
+              if not artifact.get("yanked")
+          ]
+          selected = None
+          marker = ""
+          for kind, candidate_marker in (
+              ("sdist", "pypi-sdist"),
+              ("bdist_wheel", "pypi-wheel"),
+          ):
+              for artifact in sorted(
+                  artifacts, key=lambda item: item["filename"]
+              ):
+                  if artifact["packagetype"] != kind:
+                      continue
+                  if kind == "bdist_wheel" and not artifact[
+                      "filename"
+                  ].endswith("-any.whl"):
+                      continue
+                  selected, marker = artifact, candidate_marker
+                  break
+              if selected:
+                  break
+          if not selected:
+              raise SystemExit(
+                  f"{project} {version} has no recoverable sdist or pure-Python wheel"
+              )
+
+          with urllib.request.urlopen(selected["url"]) as response:
+              payload = response.read()
+          with tempfile.TemporaryDirectory() as scratch:
+              unpacked = Path(scratch)
+              if selected["filename"].endswith(".whl"):
+                  with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                      archive.extractall(unpacked)
+                  artifact_root = unpacked
+              else:
+                  with tarfile.open(
+                      fileobj=io.BytesIO(payload), mode="r:*"
+                  ) as archive:
+                      archive.extractall(unpacked, filter="data")
+                  roots = [
+                      entry for entry in unpacked.iterdir() if entry.is_dir()
+                  ]
+                  if len(roots) != 1:
+                      raise SystemExit(
+                          f"{selected['filename']} has {len(roots)} roots"
+                      )
+                  artifact_root = roots[0]
+              published_surface = public_surface(artifact_root)
+
+          best = {
+              "version": version,
+              "source": f"{marker}:{selected['filename']}",
+              "surface": published_surface,
+          }
+          (runner_temp / "best.json").write_text(
+              json.dumps(best, indent=2) + "\n"
+          )
+          PY
 
       - name: Prove the gate can refuse
         # A gate that has never refused is decoration. The install step's identity
@@ -101,7 +289,7 @@ jobs:
 
           # `- [(.surface | sort | first)]` drops one name without a bare index, which
           # this workspace's numeric-literal policy would refuse. Each candidate is
-          # exactly the shape scripts/surface.py emits: a lone "surface" array.
+          # exactly the shape the inline AST reader emits: a lone "surface" array.
           jq '{surface: .surface}' released-surface.json > "$RUNNER_TEMP/same.json"
           jq '{surface: (.surface - [(.surface | sort | first)])}' \
             released-surface.json > "$RUNNER_TEMP/removed.json"
@@ -187,7 +375,7 @@ jobs:
           echo "marker: $marker"
 
           # This job asks no question about a git ref anywhere, on purpose.
-          # scripts/baseline.py implements two tiers only — pypi-sdist and pypi-wheel —
+          # The baseline policy implements two tiers only — pypi-sdist and pypi-wheel —
           # and says so in its own docstring; the non-registry arm below can be entered
           # only by a hand-edited baseline. With no tag question in the file there is
           # nothing to scope to `origin`, and a `git ls-remote` added here would be an
@@ -196,7 +384,7 @@ jobs:
           # not quietly skipping a tag-shaped artifact.
           #
           # What revokes this: released-surface.json carrying a marker that is not
-          # pypi-*, scripts/baseline.py gaining a git-archive or head tier, or origin
+          # pypi-*, the baseline policy gaining a git-archive or head tier, or origin
           # serving a tag or a Release. Then the "nothing was published" branch must
           # prove absence AT ORIGIN with `git ls-remote --tags origin` — checkout
           # fetches no tags, so a local listing is blind on a runner, and a fork's
@@ -216,7 +404,7 @@ jobs:
             esac
             if ! curl -sSf "https://pypi.org/pypi/$PROJECT/$baseline/json" > /dev/null; then
               echo "::error::released-surface.json claims $marker, but PyPI does not serve" \
-                "$PROJECT $baseline. The baseline was hand-edited; run scripts/baseline.py."
+                "$PROJECT $baseline. The baseline was hand-edited; regenerate it from PyPI."
               false
             fi
             echo "PyPI serves the baseline $baseline, as the marker claims."
@@ -241,17 +429,17 @@ jobs:
             # commit; this repository can never be on that tier, because PyPI serves it.
             # The probe costs one small download per run, which also proves the
             # published artifact still parses.
-            best="$(python3 scripts/baseline.py --stdout)"
+            best="$(cat "$RUNNER_TEMP/best.json")"
             best_marker="$(printf '%s' "$best" | jq -r '.source | split(" ") | first')"
             best_version="$(printf '%s' "$best" | jq -r .version)"
             if [ "$best_version" != "$baseline" ]; then
               echo "::error::the baseline describes $baseline, but $best_version is the" \
-                "latest published version; run scripts/baseline.py."
+                "latest published version; regenerate released-surface.json from PyPI."
               false
             fi
             if [ "$best_marker" != "$marker" ]; then
               echo "::error::the baseline names $marker, but the artifact to recover from" \
-                "now is $best_marker; run scripts/baseline.py."
+                "now is $best_marker; regenerate released-surface.json from PyPI."
               false
             fi
             echo "$marker is still the best artifact available."
@@ -278,7 +466,7 @@ jobs:
             if printf '%s' "$answer" | jq -e '.info.name' > /dev/null; then
               echo "::error::released-surface.json claims nothing was published ($marker)," \
                 "but PyPI names $PROJECT. The baseline is dodging a real release;" \
-                "run scripts/baseline.py."
+                "regenerate released-surface.json from PyPI."
               false
             elif ! printf '%s' "$answer" |
                  jq -e '(.message // "") | ascii_downcase | contains("not found")' \
