@@ -30,14 +30,20 @@ from .bundle import (
     _fact_condition,
 )
 
+# Bounds of a journey graph the runtime will walk: condition nesting and fan-out, screens and transitions.
+_MAX_CONDITION_DEPTH = 16
+_MAX_CONDITION_CHILDREN = 32
+_MAX_SCREENS = 128
+_MAX_TRANSITIONS = 128
+
 
 def _validate_condition(condition: Any, depth: int = 0) -> None:
-    if depth > 16 or not isinstance(condition, dict):
+    if depth > _MAX_CONDITION_DEPTH or not isinstance(condition, dict):
         raise ValueError("journey condition is invalid")
     kind = condition.get("kind")
     if kind in {"all", "any"}:
         children = condition.get("conditions")
-        if not isinstance(children, list) or len(children) > 32:
+        if not isinstance(children, list) or len(children) > _MAX_CONDITION_CHILDREN:
             raise ValueError("journey condition group is invalid")
         for child in children:
             _validate_condition(child, depth + 1)
@@ -94,7 +100,7 @@ def validate_bundle(bundle: Any) -> Dict[str, Any]:
     if analytics != expected_analytics:
         raise ValueError("journey analytics contract is invalid")
     screens = definition.get("screens")
-    if not isinstance(screens, list) or not screens or len(screens) > 128:
+    if not isinstance(screens, list) or not screens or len(screens) > _MAX_SCREENS:
         raise ValueError("journey screen graph is invalid")
     by_id: Dict[str, Dict[str, Any]] = {}
     for screen in screens:
@@ -125,7 +131,7 @@ def validate_bundle(bundle: Any) -> Dict[str, Any]:
         ):
             raise ValueError("journey screen action is unsupported")
         transitions = screen.get("transitions")
-        if not isinstance(transitions, list) or len(transitions) > 128:
+        if not isinstance(transitions, list) or len(transitions) > _MAX_TRANSITIONS:
             raise ValueError("journey transitions are invalid")
         for condition_name in ("entry_conditions", "completion_evidence"):
             if screen.get(condition_name) is not None:

@@ -17,6 +17,9 @@ from ..types import SteeringOptimizationResult, SteeringOptimizationSummary
 
 logger = logging.getLogger(__name__)
 
+# Effectiveness is measured on an 80/20 train-test split of the task samples.
+DEFAULT_SPLIT_RATIO = 0.8
+
 
 class SteeringOptimizerBase:
     """Base class providing initialization and utility methods for SteeringOptimizer."""
@@ -214,7 +217,7 @@ class SteeringOptimizerBase:
             layer=layer,
             strength=strength,
             limit=len(test_samples),
-            split_ratio=0.8
+            split_ratio=DEFAULT_SPLIT_RATIO
         )
 
         return {

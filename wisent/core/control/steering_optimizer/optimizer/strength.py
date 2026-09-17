@@ -29,6 +29,10 @@ from ..types import SteeringOptimizationResult, SteeringOptimizationSummary
 
 logger = logging.getLogger(__name__)
 
+# A strength score is the mean likelihood change, capped, plus half the accuracy above chance.
+MAX_STEERING_EFFECT = 100.0
+ACCURACY_WEIGHT = 0.5
+
 # Alias for backward compatibility
 SteeringMethod = SteeringMethodType
 
@@ -198,10 +202,10 @@ class StrengthOptimizationMixin:
                           if np.isfinite(b) and np.isfinite(s)]
             if valid_pairs:
                 changes = [abs(s - b) for b, s in valid_pairs]
-                steering_effect = min(sum(changes) / len(changes), 100.0)
+                steering_effect = min(sum(changes) / len(changes), MAX_STEERING_EFFECT)
                 score = steering_effect
                 if np.isfinite(accuracy) and accuracy > CHANCE_LEVEL_ACCURACY:
-                    score += accuracy * 0.5
+                    score += accuracy * ACCURACY_WEIGHT
                 return score
 
         return float(accuracy) if np.isfinite(accuracy) else 0.0
