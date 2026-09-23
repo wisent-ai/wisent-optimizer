@@ -25,6 +25,8 @@ its steering methods.
 
 Documentation: [Wisent model optimizer](https://wisent.com/docs/models/wisent-optimizer)
 
+Documentation: [Wisent model optimizer](https://wisent.com/docs/models/wisent-optimizer)
+
 ## Install
 
 ```
