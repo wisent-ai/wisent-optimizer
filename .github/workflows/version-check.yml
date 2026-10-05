@@ -73,13 +73,13 @@ jobs:
           esac
 
       - name: Read the current and published public surfaces
-        # No package dependencies: both surfaces are read with ast, so this stays
-        # cheap and cannot be broken by optuna, hyperopt or an uninstalled sibling
-        # distribution. A module that does not parse fails the step rather than
-        # silently shrinking the surface.
+        # No package dependencies: both surfaces are read with a parser by the Rust
+        # tool in release/, so this stays cheap and cannot be broken by optuna,
+        # hyperopt or an uninstalled sibling distribution. A module that does not
+        # parse fails the step rather than silently shrinking the surface.
         run: |
-          python3 release/surface.py > "$RUNNER_TEMP/candidate.json"
-          python3 release/baseline.py --stdout > "$RUNNER_TEMP/best.json"
+          cargo run --locked --quiet --manifest-path release/Cargo.toml -- surface > "$RUNNER_TEMP/candidate.json"
+          cargo run --locked --quiet --manifest-path release/Cargo.toml -- baseline --stdout > "$RUNNER_TEMP/best.json"
 
       - name: Prove the gate can refuse
         # A gate that has never refused is decoration. The install step's identity
