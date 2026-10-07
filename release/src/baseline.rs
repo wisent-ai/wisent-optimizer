@@ -15,7 +15,9 @@ use crate::surface::public_surface;
 const PROJECT: &str = "wisent-optimizer";
 
 fn get(url: &str) -> Result<Vec<u8>, String> {
-    let response = ureq::get(url).call().map_err(|error| format!("cannot reach {url}: {error}"))?;
+    let response = ureq::get(url)
+        .call()
+        .map_err(|error| format!("cannot reach {url}: {error}"))?;
     let mut body = Vec::new();
     response
         .into_reader()
@@ -27,8 +29,8 @@ fn get(url: &str) -> Result<Vec<u8>, String> {
 /// The newest published version, its tier marker and the artifact to read.
 fn published_artifact() -> Result<(Value, &'static str, String), String> {
     let index = format!("https://pypi.org/pypi/{PROJECT}/json");
-    let metadata: Value =
-        serde_json::from_slice(&get(&index)?).map_err(|error| format!("{index} is not JSON: {error}"))?;
+    let metadata: Value = serde_json::from_slice(&get(&index)?)
+        .map_err(|error| format!("{index} is not JSON: {error}"))?;
     let version = metadata["info"]["version"]
         .as_str()
         .ok_or_else(|| format!("{index} names no info.version"))?
@@ -45,23 +47,30 @@ fn published_artifact() -> Result<(Value, &'static str, String), String> {
         let found = artifacts.iter().find(|artifact| {
             artifact["packagetype"].as_str() == Some(kind)
                 && (kind != "bdist_wheel"
-                    || artifact["filename"].as_str().is_some_and(|name| name.ends_with("-any.whl")))
+                    || artifact["filename"]
+                        .as_str()
+                        .is_some_and(|name| name.ends_with("-any.whl")))
         });
         if let Some(artifact) = found {
             return Ok((artifact.clone(), marker, version));
         }
     }
-    Err(format!("{PROJECT} {version} has no recoverable sdist or pure-Python wheel"))
+    Err(format!(
+        "{PROJECT} {version} has no recoverable sdist or pure-Python wheel"
+    ))
 }
 
 /// The surface of an artifact and the sha256 of the bytes it was read from.
 fn recovered_surface(artifact: &Value, scratch: &Path) -> Result<(Vec<String>, String), String> {
-    let url = artifact["url"].as_str().ok_or("the artifact names no url")?;
+    let url = artifact["url"]
+        .as_str()
+        .ok_or("the artifact names no url")?;
     let filename = artifact["filename"].as_str().unwrap_or_default();
     let payload = get(url)?;
     let digest = hex::encode(Sha256::digest(&payload));
     if scratch.exists() {
-        std::fs::remove_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
+        std::fs::remove_dir_all(scratch)
+            .map_err(|error| format!("{}: {error}", scratch.display()))?;
     }
     std::fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
     let root: PathBuf = if filename.ends_with(".whl") {
@@ -110,7 +119,8 @@ pub fn run(repository: &Path, scratch: &Path, to_stdout: bool) -> Result<(), Str
         ),
         surface: names,
     };
-    let rendered = serde_json::to_string_pretty(&document).map_err(|error| error.to_string())? + "\n";
+    let rendered =
+        serde_json::to_string_pretty(&document).map_err(|error| error.to_string())? + "\n";
     if to_stdout {
         print!("{rendered}");
         return Ok(());

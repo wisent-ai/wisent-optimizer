@@ -20,13 +20,20 @@ fn text<'s>(node: Node, source: &'s str) -> &'s str {
 }
 
 fn parse(path: &Path) -> Result<(String, Tree), String> {
-    let refuse = |reason: String| format!("{}: surface is unknown because it cannot be parsed: {reason}", path.display());
+    let refuse = |reason: String| {
+        format!(
+            "{}: surface is unknown because it cannot be parsed: {reason}",
+            path.display()
+        )
+    };
     let source = std::fs::read_to_string(path).map_err(|error| refuse(error.to_string()))?;
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_python::LANGUAGE.into())
         .map_err(|error| refuse(error.to_string()))?;
-    let tree = parser.parse(&source, None).ok_or_else(|| refuse("no syntax tree".to_string()))?;
+    let tree = parser
+        .parse(&source, None)
+        .ok_or_else(|| refuse("no syntax tree".to_string()))?;
     if tree.root_node().has_error() {
         return Err(refuse("invalid Python".to_string()));
     }
@@ -43,7 +50,9 @@ fn string_literal(node: Node, source: &str) -> Option<String> {
     for child in node.children(&mut cursor) {
         match child.kind() {
             "string_start" => {
-                let prefix = text(child, source).trim_end_matches(['"', '\'']).to_ascii_lowercase();
+                let prefix = text(child, source)
+                    .trim_end_matches(['"', '\''])
+                    .to_ascii_lowercase();
                 if prefix.contains('b') || prefix.contains('f') || prefix.contains('t') {
                     return None;
                 }
@@ -85,7 +94,9 @@ fn exported_names(root: Node, source: &str, path: &Path) -> Result<Vec<String>, 
         if !matches!(node.kind(), "assignment" | "augmented_assignment") {
             continue;
         }
-        let Some(left) = node.child_by_field_name("left") else { continue };
+        let Some(left) = node.child_by_field_name("left") else {
+            continue;
+        };
         if left.kind() != "identifier" || text(left, source) != ALL {
             continue;
         }
@@ -94,7 +105,10 @@ fn exported_names(root: Node, source: &str, path: &Path) -> Result<Vec<String>, 
             .filter(|value| sequence(*value))
             .ok_or_else(|| format!("{}: __all__ is not a literal sequence", path.display()))?;
         let mut cursor = value.walk();
-        for element in value.named_children(&mut cursor).filter(|element| element.kind() != "comment") {
+        for element in value
+            .named_children(&mut cursor)
+            .filter(|element| element.kind() != "comment")
+        {
             let name = string_literal(element, source)
                 .ok_or_else(|| format!("{}: __all__ has a non-literal entry", path.display()))?;
             found.get_or_insert_with(Vec::new).push(name);
@@ -113,18 +127,26 @@ fn dispatch_names(root: Node, source: &str) -> Vec<String> {
         }
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
-        let Some((left, rest)) = children.split_first() else { continue };
+        let Some((left, rest)) = children.split_first() else {
+            continue;
+        };
         if left.kind() != "identifier" || text(*left, source) != DISPATCH_PARAMETER {
             continue;
         }
         for pair in rest.chunks(2) {
-            let [operator, comparator] = pair else { continue };
+            let [operator, comparator] = pair else {
+                continue;
+            };
             if !matches!(operator.kind(), "==" | "in") {
                 continue;
             }
             if sequence(*comparator) {
                 let mut inner = comparator.walk();
-                found.extend(comparator.named_children(&mut inner).filter_map(|item| string_literal(item, source)));
+                found.extend(
+                    comparator
+                        .named_children(&mut inner)
+                        .filter_map(|item| string_literal(item, source)),
+                );
             } else if let Some(value) = string_literal(*comparator, source) {
                 found.push(value);
             }
@@ -134,9 +156,12 @@ fn dispatch_names(root: Node, source: &str) -> Vec<String> {
 }
 
 fn python_files(directory: &Path, found: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries = std::fs::read_dir(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
+    let entries = std::fs::read_dir(directory)
+        .map_err(|error| format!("{}: {error}", directory.display()))?;
     for entry in entries {
-        let path = entry.map_err(|error| format!("{}: {error}", directory.display()))?.path();
+        let path = entry
+            .map_err(|error| format!("{}: {error}", directory.display()))?
+            .path();
         if path.is_dir() {
             python_files(&path, found)?;
         } else if path.extension().is_some_and(|extension| extension == "py") {
@@ -148,7 +173,9 @@ fn python_files(directory: &Path, found: &mut Vec<PathBuf>) -> Result<(), String
 
 /// The sorted public surface of the package under `root`.
 pub fn public_surface(root: &Path) -> Result<Vec<String>, String> {
-    let package = PACKAGE.iter().fold(root.to_path_buf(), |path, part| path.join(part));
+    let package = PACKAGE
+        .iter()
+        .fold(root.to_path_buf(), |path, part| path.join(part));
     if !package.is_dir() {
         return Err(format!("{} is not a directory", package.display()));
     }
@@ -159,8 +186,15 @@ pub fn public_surface(root: &Path) -> Result<Vec<String>, String> {
     for path in files {
         let (source, tree) = parse(&path)?;
         if path.file_name().is_some_and(|name| name == INIT) {
-            let relative = path.parent().unwrap_or(&path).strip_prefix(root).unwrap_or(&path);
-            let module: Vec<String> = relative.iter().map(|part| part.to_string_lossy().into_owned()).collect();
+            let relative = path
+                .parent()
+                .unwrap_or(&path)
+                .strip_prefix(root)
+                .unwrap_or(&path);
+            let module: Vec<String> = relative
+                .iter()
+                .map(|part| part.to_string_lossy().into_owned())
+                .collect();
             let module = module.join(".");
             for name in exported_names(tree.root_node(), &source, &path)? {
                 names.insert(format!("export:{module}:{name}"));
@@ -171,7 +205,10 @@ pub fn public_surface(root: &Path) -> Result<Vec<String>, String> {
         }
     }
     if names.is_empty() {
-        return Err(format!("no promised names found under {}", package.display()));
+        return Err(format!(
+            "no promised names found under {}",
+            package.display()
+        ));
     }
     Ok(names.into_iter().collect())
 }
