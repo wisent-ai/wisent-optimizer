@@ -1,40 +1,6 @@
 {
   "schema_version": 1,
   "product": "wisent-optimizer",
-  "releases": true,
-  "version_source": {
-    "kind": "regex",
-    "path": "setup.py",
-    "pattern": "(?m)^\\s*version\\s*=\\s*[\\\"'](?P<version>[0-9A-Za-z._-]+)[\\\"']"
-  },
-  "platforms": {
-    "python": {
-      "runner_platform": "linux-amd64",
-      "quality": [{"name": "fmt", "argv": ["cargo", "fmt", "--manifest-path", "release/Cargo.toml", "--", "--check"]}],
-      "build": {
-        "argv": ["stado", "product", "python", "build"]
-      },
-      "stage": {
-        "release/python-distributions.tar": "release/python-distributions.tar"
-      }
-    }
-  },
-  "promotion": {
-    "channels": [
-      "stable"
-    ],
-    "reconcile": false
-  },
-  "inputs": {},
-  "deliveries": [
-    {
-      "name": "pypi",
-      "platform": "python",
-      "argv": ["stado", "product", "python", "deliver-pypi"],
-      "required": true,
-      "secret_env": {
-        "PYPI_TOKEN": "pypi#token"
-      }
-    }
-  ]
+  "releases": false,
+  "reason": "The optimizer's search is Ster's: ster optimize --holdout chooses the method and layer on held-out pairs, and ster evaluate --strengths chooses the strength; the Python package is retired under the zero-Python rule and its last PyPI release stays where it was published."
 }

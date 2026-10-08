@@ -10,46 +10,41 @@
 
 # wisent-optimizer
 
-Monitor and Control Your AI Agent Brain.
+wisent-optimizer chose how to steer a model: which method, which layer and how
+strong. That search is now [Ster](https://ster.wisent.com/docs)'s, Wisent's
+representation-engineering toolkit, and this repository no longer ships code.
+The Python package is retired under the zero-Python rule; its last release
+stays on PyPI as it was published, and nothing new is released from here.
 
-You look at what your model says. But what was it actually thinking? Wisent shows
-you how to use information from AI activations, intermediate steps within its
-layers, to your advantage. Wisent is a full toolkit for representation
-engineering, activation steering and mechanistic interpretability. Cut
-hallucination rates, decensor your model or stop it from being detected by
-AI-generated text detectors. Your Models — Yours to Control. Better than
-fine-tuning. Better than analysing the outputs directly.
+Each thing the package did has a Ster command, and every number the search
+depends on is one you state — Ster assumes no split, strength, batch or
+sequence limit, and a measurement it cannot take is reported as missing rather
+than as a zero:
 
-Deploy the latest research in your stack. This is the hyperparameter optimizer for
-its steering methods.
+| The package | Ster |
+| --- | --- |
+| `optimization_type: method_comparison`, `layer` | `ster optimize --holdout <FRACTION>`: fits every method at every layer on part of the pairs, ranks them on the rest, publishes the whole table and writes the winner |
+| `optimization_type: strength` | `ster evaluate --strengths <S,S,...> --batch-size <N> --max-sequence <TOKENS>`: measures the artifact at each strength by how it moves the model's log-probability of each pair's positive side against its negative side, and picks one |
+| `optimization_type: comprehensive` | the two above, in that order |
+| `train_recommended_method`, `run_grid_search` | `ster train --method caa\|pca\|logistic --layers <LAYERS>` |
+| `get_optimal_steering_params` | the artifact `ster optimize` writes, read with `ster inspect` |
 
-Documentation: [Wisent model optimizer](https://wisent.com/docs/models/wisent-optimizer)
+## Quickstart
 
-Documentation: [Wisent model optimizer](https://wisent.com/docs/models/wisent-optimizer)
+Install Ster (`stado product install ster --surface cli`, or `cargo install
+--path .` in its repository), then choose a method, a layer and a strength on
+the example pairs Ster ships, with the toy model it writes:
 
-## Install
-
+```bash
+ster toy-model toy-model
+ster optimize --model toy-model --pairs docs/examples/pairs.json --holdout 0.25 --output calm.ster.json
+ster evaluate --model toy-model --pairs docs/examples/pairs.json --vector calm.ster.json \
+  --strengths -1,0.5,1,2,4 --batch-size 4 --max-sequence 256
+ster generate --model toy-model --vector calm.ster.json --strength <the selected_strength> \
+  --prompt "describe the sea ." --max-new-tokens 16 --temperature 0 --seed 7
 ```
-pip install wisent-optimizer
-```
 
-## Versioning
-
-The public contract of this package is what it promises callers: the names its package
-initialisers re-export, and the `optimization_type` strings `run_steering_optimization`
-dispatches on. `cargo run --manifest-path release/Cargo.toml -- surface` prints that
-surface by reading the source with a parser -- never by importing it, so the answer does
-not depend on having `optuna`, `hyperopt` or the sibling `wisent` distributions installed.
-
-`released-surface.json` is the same surface recovered from the artifact PyPI actually
-serves for the latest published version. Regenerate it with
-`cargo run --manifest-path release/Cargo.toml -- baseline` after a release (`--stdout`
-prints it instead); never edit it by hand, because every version decision is measured
-against it.
-
-CI compares the two with the shared fleet rule
-([AutoVersion](https://github.com/lbartoszcze/AutoVersion)) and refuses a change whose
-declared version disagrees with what it did to the contract. Removing an export or
-renaming a dispatch string is breaking; the dispatch strings are in the contract
-precisely because an unrecognised one returns `{"error": ...}` instead of raising, so
-renaming one breaks callers silently.
+On a real model, name it with `--model` (a Hugging Face id or a local
+directory) and use your own pair set; `ster pairs import` reads the common
+benchmark formats. The [steering guide](https://ster.wisent.com/docs) explains
+each command's report and refusals.
